@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#000000">
+<title>SV Developers — Performance-First Web Architecture</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+/* =====================================================
+   RESET & VARIABLES
+===================================================== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+:root {
+  --bg:      #000000;
+  --bg2:     #080808;
+  --glass:   rgba(255,255,255,0.04);
+  --glass-h: rgba(255,255,255,0.07);
+  --bdr:     rgba(255,255,255,0.08);
+  --bdr-a:   rgba(0,212,255,0.30);
+  --c1:  #ffffff;
+  --c2:  #c8c8d0;
+  --c3:  #888899;
+  --acc: #00d4ff;
+  --ac2: #00ffcc;
+  --grn: #22c55e;
+  --fh: 'Syne', sans-serif;
+  --fb: 'Space Grotesk', sans-serif;
+  --fm: 'Space Mono', monospace;
+}
+
+body {
+  font-family: var(--fb);
+  background: var(--bg);
+  color: var(--c1);
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+/* Touch devices — normal cursor */
+@media (pointer: fine) {
+  body { cursor: none; }
+}
+
+img, svg { max-width: 100%; }
+a { text-decoration: none; }
+
+/* =====================================================
+   CUSTOM CURSOR (desktop only)
+===================================================== */
+#cdot, #cring {
+  position: fixed; top: 0; left: 0;
+  pointer-events: none; z-index: 9999;
+  transform: translate(-50%,-50%);
+}
+#cdot {
+  width: 8px; height: 8px;
+  background: var(--acc); border-radius: 50%;
+  transition: width .2s, height .2s;
+}
+#cring {
+  width: 36px; height: 36px;
+  border: 1.5px solid var(--acc); border-radius: 50%;
+  opacity: .4;
+  z-index: 9998;
+}
+@media (pointer: coarse) { #cdot, #cring { display: none; } }
+
+/* =====================================================
+   PARTICLE CANVAS
+===================================================== */
+#bgc {
+  position: fixed; inset: 0; z-index: 0;
+  pointer-events: none;
+}
+
+/* =====================================================
+   SCROLLBAR
+===================================================== */
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: #000; }
+::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+
+/* =====================================================
+   NAVIGATION
+===================================================== */
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 500;
+  height: 64px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 56px;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(20px) saturate(160%);
+  border-bottom: 1px solid var(--bdr);
+  transition: background .3s;
+}
+nav.solid { background: rgba(0,0,0,0.97); }
+
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--fm);
+  font-size: .95rem; font-weight: 700;
+  color: var(--c1); letter-spacing: .04em;
+}
+.brand-dot {
+  width: 8px; height: 8px;
+  background: var(--acc); border-radius: 50%;
+  box-shadow: 0 0 10px var(--acc);
+  animation: blink 2s ease infinite;
+  flex-shrink: 0;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+.nav-links {
+  display: flex; gap: 36px; list-style: none;
+}
+.nav-links a {
+  font-family: var(--fm); font-size: .75rem;
+  color: var(--c2); letter-spacing: .1em;
+  text-transform: uppercase;
+  transition: color .2s;
+}
+.nav-links a:hover { color: var(--c1); }
+
+.nav-cta {
+  font-family: var(--fm); font-size: .75rem; font-weight: 700;
+  color: #000; background: var(--acc);
+  padding: 9px 20px; border-radius: 5px;
+  letter-spacing: .06em; text-transform: uppercase;
+  transition: all .25s;
+  box-shadow: 0 0 20px rgba(0,212,255,.3);
+}
+.nav-cta:hover { background: var(--ac2); transform: translateY(-1px); }
+
+/* Hamburger */
+.hamburger {
+  display: none; flex-direction: column;
+  gap: 5px; background: none; border: none;
+  cursor: pointer; padding: 6px; z-index: 600;
+}
+.hamburger span {
+  display: block; width: 24px; height: 2px;
+  background: var(--c1); border-radius: 2px;
+  transition: all .3s ease; transform-origin: center;
+}
+.hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.hamburger.open span:nth-child(2) { opacity: 0; }
+.hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+/* Mobile overlay menu */
+.mob-menu {
+  display: none;
+  position: fixed; inset: 0; z-index: 450;
+  background: rgba(0,0,0,0.98);
+  backdrop-filter: blur(20px);
+  opacity: 0; pointer-events: none;
+  transition: opacity .3s ease;
+  flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 8px;
+  padding: 80px 32px 48px;
+}
+.mob-menu.open { opacity: 1; pointer-events: all; }
+.mob-menu a {
+  font-family: var(--fh);
+  font-size: 2.2rem; font-weight: 800;
+  color: var(--c2); letter-spacing: -.03em;
+  transition: color .2s; padding: 6px 0;
+  text-align: center;
+}
+.mob-menu a:hover { color: var(--c1); }
+.mob-cta-link {
+  margin-top: 24px !important;
+  font-family: var(--fm) !important;
+  font-size: .9rem !important;
+  font-weight: 700 !important;
+  color: #000 !important;
+  background: var(--acc);
+  padding: 15px 40px !important;
+  border-radius: 8px !important;
+  letter-spacing: .06em !important;
+  box-shadow: 0 0 28px rgba(0,212,255,.4);
+}
+
+/* =====================================================
+   HERO
+===================================================== */
+.hero {
+  min-height: 100svh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 128px 56px 80px;
+  position: relative; z-index: 1;
+  text-align: center;
+}
+
+.hero-pill {
+  display: inline-flex; align-items: center; gap: 10px;
+  background: rgba(34,197,94,.10);
+  border: 1px solid rgba(34,197,94,.28);
+  border-radius: 100px; padding: 8px 20px;
+  margin-bottom: 40px;
+  font-family: var(--fm); font-size: .80rem;
+  color: var(--grn); letter-spacing: .05em;
+}
+.hero-pill .pdot {
+  width: 7px; height: 7px; background: var(--grn);
+  border-radius: 50%; flex-shrink: 0;
+  animation: gpulse 2s ease infinite;
+}
+@keyframes gpulse {
+  0%,100%{ box-shadow: 0 0 0 0 rgba(34,197,94,.5); }
+  50%    { box-shadow: 0 0 0 7px rgba(34,197,94,0); }
+}
+
+.hero-label {
+  font-family: var(--fm); font-size: .80rem;
+  color: var(--acc); letter-spacing: .16em;
+  text-transform: uppercase; margin-bottom: 24px;
+}
+
+.hero-h1 {
+  font-family: var(--fh);
+  font-size: clamp(3rem, 7.5vw, 7rem);
+  font-weight: 800; line-height: .97;
+  letter-spacing: -.04em;
+  max-width: 940px; margin: 0 auto 28px;
+}
+.hero-h1 .ca { color: var(--acc); }
+.hero-h1 .cd { color: var(--c3); }
+
+.hero-sub {
+  font-size: clamp(1rem, 2.5vw, 1.15rem);
+  color: var(--c2); font-weight: 400;
+  max-width: 640px; margin: 0 auto 48px;
+  line-height: 1.78;
+}
+.hero-sub strong { color: var(--c1); font-weight: 600; }
+
+.hero-btns {
+  display: flex; align-items: center;
+  gap: 14px; justify-content: center; flex-wrap: wrap;
+}
+
+.btn-p {
+  display: inline-flex; align-items: center; gap: 10px;
+  background: var(--acc); color: #000; font-weight: 700;
+  font-family: var(--fb); font-size: .95rem;
+  padding: 15px 34px; border-radius: 6px;
+  box-shadow: 0 0 32px rgba(0,212,255,.35);
+  transition: all .25s; position: relative; overflow: hidden;
+}
+.btn-p::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg,rgba(255,255,255,.18) 0%,transparent 55%);
+  opacity: 0; transition: opacity .25s;
+}
+.btn-p:hover { transform: translateY(-2px); box-shadow: 0 0 55px rgba(0,212,255,.55); }
+.btn-p:hover::after { opacity: 1; }
+
+.btn-g {
+  display: inline-flex; align-items: center; gap: 8px;
+  color: var(--c2); font-size: .95rem; font-family: var(--fb);
+  border: 1px solid var(--bdr);
+  padding: 14px 30px; border-radius: 6px;
+  transition: all .25s;
+}
+.btn-g:hover { color: var(--c1); border-color: rgba(255,255,255,.22); background: var(--glass); }
+
+.scroll-cue {
+  position: absolute; bottom: 36px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; flex-direction: column;
+  align-items: center; gap: 8px;
+  font-family: var(--fm); font-size: .65rem;
+  color: var(--c3); letter-spacing: .12em;
+  text-transform: uppercase;
+  animation: scue 2.5s ease infinite;
+}
+.scroll-line { width: 1px; height: 40px; background: linear-gradient(to bottom, var(--acc), transparent); }
+@keyframes scue { 0%,100%{ transform:translateX(-50%) translateY(0); } 55%{ transform:translateX(-50%) translateY(10px); } }
+
+/* =====================================================
+   TICKER
+===================================================== */
+.ticker {
+  position: relative; z-index: 1;
+  border-top: 1px solid var(--bdr); border-bottom: 1px solid var(--bdr);
+  background: rgba(0,212,255,.025);
+  padding: 16px 0; overflow: hidden;
+}
+.ticker-track {
+  display: flex; gap: 56px; width: max-content;
+  animation: tick 30s linear infinite;
+}
+@keyframes tick { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+.ti {
+  display: flex; align-items: center; gap: 12px;
+  font-family: var(--fm); font-size: .78rem;
+  color: var(--c3); letter-spacing: .1em;
+  text-transform: uppercase; white-space: nowrap;
+}
+.ti .ts { color: var(--acc); font-size: .6rem; }
+
+/* =====================================================
+   SHARED SECTION
+===================================================== */
+section { position: relative; z-index: 1; }
+.sw { max-width: 1200px; margin: 0 auto; padding: 110px 56px; }
+
+.eyebrow {
+  display: flex; align-items: center; gap: 12px;
+  font-family: var(--fm); font-size: .80rem;
+  color: var(--acc); letter-spacing: .14em;
+  text-transform: uppercase; margin-bottom: 18px;
+}
+.eyebrow::before {
+  content: ''; display: block;
+  width: 28px; height: 1px; background: var(--acc); flex-shrink: 0;
+}
+.stitle {
+  font-family: var(--fh);
+  font-size: clamp(2.2rem, 4.5vw, 3.8rem);
+  font-weight: 800; letter-spacing: -.04em;
+  line-height: 1.08; margin-bottom: 20px;
+}
+.ssub {
+  font-size: 1.02rem; color: var(--c2);
+  font-weight: 400; max-width: 580px;
+  line-height: 1.75; margin-bottom: 64px;
+}
+
+/* Scroll reveal */
+.r { opacity: 0; transform: translateY(28px); transition: opacity .7s ease, transform .7s ease; }
+.r.in { opacity: 1; transform: translateY(0); }
+.d1{transition-delay:.1s} .d2{transition-delay:.2s}
+.d3{transition-delay:.3s} .d4{transition-delay:.4s}
+
+/* =====================================================
+   BENTO GRID
+===================================================== */
+#solutions { background: var(--bg); }
+
+.bento {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 16px;
+}
+.bc {
+  background: var(--glass);
+  border: 1px solid var(--bdr);
+  border-radius: 18px; padding: 36px 32px;
+  position: relative; overflow: hidden;
+  backdrop-filter: blur(12px);
+  transition: border-color .3s, background .3s, transform .3s;
+}
+.bc:hover { border-color: var(--bdr-a); background: var(--glass-h); transform: translateY(-4px); }
+.bc::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(circle at 0% 0%, rgba(0,212,255,.07) 0%, transparent 65%);
+  opacity: 0; transition: opacity .3s; pointer-events: none;
+}
+.bc:hover::before { opacity: 1; }
+
+.ba { grid-column: span 8; }
+.bb { grid-column: span 4; }
+.bc2{ grid-column: span 4; }
+.bd { grid-column: span 4; }
+.be { grid-column: span 4; }
+.bf { grid-column: span 7; }
+.bg { grid-column: span 5; }
+
+.bc-icon {
+  width: 50px; height: 50px;
+  background: rgba(0,212,255,.10);
+  border: 1px solid rgba(0,212,255,.20);
+  border-radius: 13px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.35rem; margin-bottom: 20px;
+}
+.bc-tag {
+  font-family: var(--fm); font-size: .73rem;
+  color: var(--acc); letter-spacing: .12em;
+  text-transform: uppercase; margin-bottom: 13px; opacity: .85;
+}
+.bc h3 {
+  font-family: var(--fh); font-size: 1.2rem; font-weight: 700;
+  letter-spacing: -.03em; margin-bottom: 12px; color: var(--c1);
+}
+.bc p { font-size: .94rem; color: var(--c2); line-height: 1.7; }
+
+.stat-row {
+  display: grid; grid-template-columns: repeat(3,1fr);
+  gap: 10px; margin-top: 22px;
+}
+.sbox {
+  background: rgba(0,212,255,.05);
+  border: 1px solid rgba(0,212,255,.14);
+  border-radius: 10px; padding: 13px 8px; text-align: center;
+}
+.snum {
+  font-family: var(--fh); font-size: 1.45rem; font-weight: 800;
+  color: var(--acc); line-height: 1; margin-bottom: 4px;
+}
+.slbl {
+  font-family: var(--fm); font-size: .65rem;
+  color: var(--c2); letter-spacing: .06em; text-transform: uppercase;
+}
+
+.node-grid {
+  display: grid; grid-template-columns: repeat(5,1fr);
+  gap: 9px; margin-top: 22px;
+}
+.node {
+  background: rgba(0,212,255,.06);
+  border: 1px solid rgba(0,212,255,.15);
+  border-radius: 9px; padding: 11px 6px; text-align: center;
+}
+.ncity { font-family: var(--fm); font-size: .65rem; color: var(--acc); letter-spacing: .06em; margin-bottom: 4px; }
+.nping { font-size: .82rem; font-weight: 600; color: var(--c2); }
+
+.speed-rows { margin-top: 22px; }
+.speed-row { margin-bottom: 14px; }
+.speed-meta {
+  display: flex; justify-content: space-between;
+  font-family: var(--fm); font-size: .76rem; color: var(--c2); margin-bottom: 6px;
+}
+.speed-track { height: 4px; background: rgba(255,255,255,.07); border-radius: 2px; overflow: hidden; }
+.speed-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--acc), var(--ac2));
+  border-radius: 2px;
+  animation: bfill 1.2s ease forwards;
+}
+@keyframes bfill { from{ width: 0 !important; } }
+
+/* =====================================================
+   ARCHITECTURE
+===================================================== */
+#architecture {
+  background: var(--bg2);
+  border-top: 1px solid var(--bdr);
+  border-bottom: 1px solid var(--bdr);
+}
+.arch-table {
+  display: flex; flex-direction: column;
+  border: 1px solid var(--bdr);
+  border-radius: 16px; overflow: hidden;
+}
+.arch-row {
+  display: grid; grid-template-columns: 68px 1fr auto;
+  align-items: center; gap: 24px;
+  padding: 28px 34px;
+  background: var(--glass);
+  border-bottom: 1px solid var(--bdr);
+  transition: background .25s;
+}
+.arch-row:last-child { border-bottom: none; }
+.arch-row:hover { background: var(--glass-h); }
+.arch-num { font-family: var(--fm); font-size: .80rem; color: var(--c3); }
+.arch-row h3 {
+  font-family: var(--fh); font-size: 1.06rem; font-weight: 700;
+  letter-spacing: -.02em; color: var(--c1); margin-bottom: 5px;
+}
+.arch-row p { font-size: .90rem; color: var(--c2); line-height: 1.6; }
+.arch-price {
+  font-family: var(--fm); font-size: .86rem; font-weight: 700;
+  color: var(--acc); white-space: nowrap;
+  background: rgba(0,212,255,.10);
+  border: 1px solid rgba(0,212,255,.22);
+  padding: 9px 17px; border-radius: 7px;
+}
+
+/* =====================================================
+   PRICING
+===================================================== */
+#pricing { background: var(--bg); }
+
+.price-grid {
+  display: grid; grid-template-columns: repeat(3,1fr);
+  gap: 20px;
+}
+.pcard {
+  background: var(--glass);
+  border: 1px solid var(--bdr);
+  border-radius: 20px; padding: 42px 36px;
+  position: relative; overflow: hidden;
+  backdrop-filter: blur(14px); transition: all .3s;
+}
+.pcard:hover { border-color: var(--bdr-a); transform: translateY(-5px); box-shadow: 0 24px 64px rgba(0,212,255,.09); }
+.pcard.hot {
+  border-color: rgba(0,212,255,.35);
+  background: linear-gradient(145deg, rgba(0,212,255,.07) 0%, rgba(0,0,0,0) 55%);
+}
+.hot-badge {
+  position: absolute; top: 20px; right: 20px;
+  font-family: var(--fm); font-size: .70rem;
+  color: var(--acc); background: rgba(0,212,255,.12);
+  border: 1px solid rgba(0,212,255,.25);
+  padding: 5px 12px; border-radius: 5px; letter-spacing: .08em; text-transform: uppercase;
+}
+.ptier { font-family: var(--fm); font-size: .76rem; color: var(--c3); letter-spacing: .14em; text-transform: uppercase; margin-bottom: 10px; }
+.pname { font-family: var(--fh); font-size: 1.55rem; font-weight: 800; letter-spacing: -.04em; margin-bottom: 20px; }
+.pamount { font-family: var(--fm); font-size: 2.9rem; font-weight: 700; line-height: 1; margin-bottom: 6px; letter-spacing: -.04em; }
+.pamount sup { font-size: 1.2rem; font-weight: 500; color: var(--c2); vertical-align: super; }
+.pnote { font-family: var(--fm); font-size: .80rem; color: var(--c2); margin-bottom: 28px; }
+.pdiv { height: 1px; background: var(--bdr); margin-bottom: 24px; }
+.plist { list-style: none; display: flex; flex-direction: column; gap: 13px; margin-bottom: 32px; }
+.plist li { display: flex; align-items: flex-start; gap: 11px; font-size: .93rem; color: var(--c2); line-height: 1.5; }
+.ck { color: var(--acc); font-weight: 700; font-size: .9rem; flex-shrink: 0; margin-top: 1px; }
+.pcta {
+  display: block; text-align: center; padding: 14px;
+  border-radius: 9px; font-size: .92rem; font-weight: 600;
+  transition: all .25s; border: 1px solid rgba(255,255,255,.14); color: var(--c1);
+  font-family: var(--fb);
+}
+.pcta:hover { border-color: var(--bdr-a); background: var(--glass-h); }
+.pcard.hot .pcta { background: var(--acc); color: #000; border-color: transparent; font-weight: 700; box-shadow: 0 0 22px rgba(0,212,255,.30); }
+.pcard.hot .pcta:hover { background: var(--ac2); box-shadow: 0 0 40px rgba(0,255,204,.40); }
+
+.addon-title {
+  text-align: center; font-family: var(--fm);
+  font-size: .80rem; color: var(--c2);
+  letter-spacing: .12em; text-transform: uppercase; margin: 50px 0 22px;
+}
+.addon-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
+.addon-card {
+  background: var(--glass); border: 1px solid var(--bdr);
+  border-radius: 13px; padding: 24px 26px;
+  display: flex; align-items: center; gap: 16px;
+  transition: all .25s;
+}
+.addon-card:hover { border-color: var(--bdr-a); background: var(--glass-h); }
+.addon-em { font-size: 1.65rem; flex-shrink: 0; }
+.addon-name { font-size: .96rem; font-weight: 600; color: var(--c1); margin-bottom: 4px; }
+.addon-price { font-family: var(--fm); font-size: .90rem; color: var(--acc); font-weight: 700; }
+.addon-cycle { font-size: .80rem; color: var(--c2); }
+
+/* =====================================================
+   TECH STACK
+===================================================== */
+#stack {
+  background: var(--bg2);
+  border-top: 1px solid var(--bdr);
+  border-bottom: 1px solid var(--bdr);
+}
+.stack-grid {
+  display: grid; grid-template-columns: repeat(4,1fr);
+  gap: 2px; background: var(--bdr);
+  border: 1px solid var(--bdr); border-radius: 16px; overflow: hidden;
+}
+.scell {
+  background: var(--bg2); padding: 28px 24px;
+  display: flex; align-items: center; gap: 16px;
+  transition: background .25s;
+}
+.scell:hover { background: var(--glass-h); }
+.slogo { width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; font-size: 1.55rem; flex-shrink: 0; }
+.sname { font-family: var(--fh); font-size: .98rem; font-weight: 700; color: var(--c1); margin-bottom: 3px; }
+.scat  { font-family: var(--fm); font-size: .68rem; color: var(--c2); letter-spacing: .07em; text-transform: uppercase; }
+
+/* =====================================================
+   CONNECT
+===================================================== */
+#connect { background: var(--bg); }
+.cbox {
+  background: var(--glass); border: 1px solid var(--bdr);
+  border-radius: 24px; padding: 88px 68px;
+  text-align: center; position: relative; overflow: hidden;
+  backdrop-filter: blur(14px);
+}
+.cbox::before {
+  content: ''; position: absolute;
+  top: -120px; left: 50%; transform: translateX(-50%);
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(0,212,255,.07) 0%, transparent 70%);
+  pointer-events: none;
+}
+.cbox h2 {
+  font-family: var(--fh);
+  font-size: clamp(2.4rem, 5vw, 4.2rem);
+  font-weight: 800; letter-spacing: -.05em;
+  line-height: 1.05; margin-bottom: 20px;
+}
+.cbox h2 span { color: var(--acc); }
+.cbox p { font-size: 1.03rem; color: var(--c2); max-width: 560px; margin: 0 auto 42px; line-height: 1.75; }
+.cactions { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; margin-bottom: 32px; }
+.cmeta { font-family: var(--fm); font-size: .80rem; color: var(--c2); letter-spacing: .05em; }
+.cmeta span { color: var(--c3); margin: 0 8px; }
+
+/* =====================================================
+   FOOTER
+===================================================== */
+footer {
+  position: relative; z-index: 1;
+  border-top: 1px solid var(--bdr); padding: 50px 56px;
+}
+.finner {
+  max-width: 1200px; margin: 0 auto;
+  display: flex; justify-content: space-between;
+  align-items: center; gap: 24px; flex-wrap: wrap;
+}
+.fbrand { font-family: var(--fm); font-size: .95rem; font-weight: 700; color: var(--c1); }
+.fbrand span { color: var(--acc); }
+.fmid { font-family: var(--fm); font-size: .78rem; color: var(--c2); text-align: center; letter-spacing: .04em; line-height: 1.7; }
+.fmid a { color: var(--c2); }
+.fmid a:hover { color: var(--acc); }
+.fbadge {
+  display: inline-flex; align-items: center; gap: 9px;
+  background: var(--glass); border: 1px solid var(--bdr);
+  border-radius: 8px; padding: 10px 18px;
+  font-family: var(--fm); font-size: .78rem; color: var(--c2); letter-spacing: .04em;
+}
+.fbdot { width: 6px; height: 6px; background: var(--c1); border-radius: 50%; }
+
+/* =====================================================
+   WHATSAPP FLOAT
+===================================================== */
+.waf {
+  position: fixed; bottom: 28px; right: 28px; z-index: 400;
+  width: 56px; height: 56px; background: #25D366; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 24px rgba(37,211,102,.45);
+  animation: wafloat 3s ease infinite; transition: transform .2s;
+}
+.waf:hover { transform: scale(1.12) !important; }
+.waf svg { width: 28px; height: 28px; fill: white; }
+@keyframes wafloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-7px)} }
+
+/* =====================================================
+   TABLET (max-width: 1024px)
+===================================================== */
+@media (max-width: 1024px) {
+  nav { padding: 0 32px; }
+  .hero { padding: 116px 32px 72px; }
+  .sw  { padding: 90px 32px; }
+
+  .bento { grid-template-columns: 1fr 1fr; gap: 14px; }
+  .ba { grid-column: span 2; }
+  .bb,.bc2,.bd,.be,.bf,.bg { grid-column: span 1; }
+
+  .node-grid { grid-template-columns: repeat(3,1fr); }
+  .stack-grid { grid-template-columns: repeat(2,1fr); }
+  .cbox { padding: 64px 44px; }
+  footer { padding: 44px 32px; }
+}
+
+/* =====================================================
+   MOBILE (max-width: 768px)
+===================================================== */
+@media (max-width: 768px) {
+
+  /* NAV */
+  nav { padding: 0 20px; height: 60px; }
+  .nav-links { display: none; }
+  .nav-cta  { display: none; }
+  .hamburger { display: flex; }
+  .mob-menu  { display: flex; }
+
+  /* HERO */
+  .hero {
+    padding: 96px 20px 64px;
+    min-height: 100svh;
+  }
+  .hero-pill {
+    font-size: .70rem; padding: 7px 14px;
+    margin-bottom: 26px; text-align: center;
+    flex-wrap: wrap; justify-content: center;
+  }
+  .hero-label { font-size: .70rem; margin-bottom: 16px; }
+  .hero-h1 {
+    font-size: clamp(2.55rem, 10.5vw, 3.8rem);
+    margin-bottom: 20px;
+  }
+  .hero-sub { font-size: .97rem; margin-bottom: 36px; padding: 0 4px; }
+  .hero-btns { flex-direction: column; width: 100%; gap: 12px; }
+  .btn-p, .btn-g { width: 100%; justify-content: center; padding: 16px 24px; font-size: .95rem; }
+  .scroll-cue { display: none; }
+
+  /* TICKER */
+  .ticker { padding: 13px 0; }
+  .ti { font-size: .72rem; }
+
+  /* SECTION SHARED */
+  .sw { padding: 64px 20px; }
+  .eyebrow { font-size: .73rem; }
+  .stitle { font-size: clamp(1.85rem, 8.5vw, 2.6rem); margin-bottom: 14px; }
+  .ssub { font-size: .95rem; margin-bottom: 40px; }
+
+  /* BENTO */
+  .bento { grid-template-columns: 1fr; gap: 12px; }
+  .ba,.bb,.bc2,.bd,.be,.bf,.bg { grid-column: span 1; }
+  .bc { padding: 26px 22px; border-radius: 14px; }
+  .bc h3 { font-size: 1.1rem; }
+  .bc p  { font-size: .91rem; }
+  .bc-tag { font-size: .70rem; }
+  .bc-icon { width: 44px; height: 44px; font-size: 1.2rem; margin-bottom: 16px; }
+
+  .stat-row { gap: 8px; }
+  .snum { font-size: 1.25rem; }
+  .slbl { font-size: .60rem; }
+  .sbox { padding: 11px 6px; }
+
+  .node-grid { grid-template-columns: repeat(3,1fr); gap: 7px; }
+  .node { padding: 9px 5px; }
+  .ncity { font-size: .60rem; }
+  .nping { font-size: .78rem; }
+  .speed-meta { font-size: .73rem; }
+
+  /* ARCHITECTURE */
+  .arch-table { border-radius: 14px; }
+  .arch-row {
+    grid-template-columns: 1fr;
+    gap: 12px; padding: 22px 18px;
+  }
+  .arch-num { display: none; }
+  .arch-row h3 { font-size: .98rem; }
+  .arch-row p  { font-size: .88rem; }
+  .arch-price { align-self: flex-start; font-size: .80rem; padding: 8px 14px; }
+
+  /* PRICING */
+  .price-grid { grid-template-columns: 1fr; gap: 14px; }
+  .pcard { padding: 34px 26px; border-radius: 16px; }
+  .pcard.hot { order: -1; }
+  .hot-badge { font-size: .66rem; top: 16px; right: 16px; padding: 4px 10px; }
+  .ptier { font-size: .72rem; }
+  .pname { font-size: 1.4rem; margin-bottom: 14px; }
+  .pamount { font-size: 2.6rem; }
+  .pnote { font-size: .78rem; }
+  .plist { gap: 11px; margin-bottom: 26px; }
+  .plist li { font-size: .91rem; }
+  .pcta { padding: 15px; font-size: .91rem; }
+
+  /* ADDONS */
+  .addon-title { font-size: .76rem; margin: 38px 0 18px; }
+  .addon-grid { grid-template-columns: 1fr; gap: 11px; }
+  .addon-card { padding: 20px 20px; border-radius: 11px; }
+  .addon-em { font-size: 1.5rem; }
+  .addon-name { font-size: .93rem; }
+  .addon-price { font-size: .88rem; }
+
+  /* STACK */
+  .stack-grid { grid-template-columns: 1fr 1fr; border-radius: 14px; }
+  .scell { padding: 20px 16px; gap: 12px; }
+  .slogo { width: 34px; height: 34px; font-size: 1.25rem; }
+  .sname { font-size: .88rem; }
+  .scat  { font-size: .63rem; }
+
+  /* CONNECT */
+  .cbox { padding: 44px 22px; border-radius: 16px; }
+  .cbox h2 { font-size: clamp(1.9rem, 9vw, 2.8rem); margin-bottom: 16px; }
+  .cbox p { font-size: .95rem; margin-bottom: 30px; }
+  .cactions { flex-direction: column; width: 100%; gap: 11px; }
+  .cactions .btn-p,
+  .cactions .btn-g { width: 100%; justify-content: center; padding: 16px 24px; }
+  .cmeta { font-size: .74rem; line-height: 2; }
+  .cmeta span { display: inline-block; width: 100%; text-align: center; visibility: hidden; height: 2px; }
+
+  /* FOOTER */
+  footer { padding: 34px 20px; }
+  .finner { flex-direction: column; text-align: center; gap: 18px; }
+  .fbrand { font-size: .88rem; }
+  .fmid   { font-size: .76rem; }
+  .fbadge { font-size: .73rem; padding: 8px 15px; }
+
+  /* WHATSAPP */
+  .waf { bottom: 20px; right: 20px; width: 50px; height: 50px; }
+  .waf svg { width: 25px; height: 25px; }
+}
+
+/* =====================================================
+   SMALL PHONES (max-width: 390px)
+===================================================== */
+@media (max-width: 390px) {
+  .hero-h1 { font-size: 2.35rem; }
+  .hero-sub { font-size: .92rem; }
+  .stitle   { font-size: 1.75rem; }
+  .bc { padding: 22px 18px; }
+  .pamount  { font-size: 2.35rem; }
+  .stack-grid { grid-template-columns: 1fr 1fr; }
+  .cbox { padding: 38px 18px; }
+  .cbox h2 { font-size: 1.85rem; }
+  .mob-menu a { font-size: 1.9rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- CURSOR (desktop) -->
+<div id="cdot"></div>
+<div id="cring"></div>
+
+<!-- CANVAS -->
+<canvas id="bgc"></canvas>
+
+<!-- ========================================
+     NAVIGATION
+======================================== -->
+<nav id="mainnav">
+  <a href="#" class="brand">
+    <div class="brand-dot"></div>
+    SV.DEVELOPERS
+  </a>
+  <ul class="nav-links">
+    <li><a href="#solutions">Solutions</a></li>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#pricing">Pricing</a></li>
+    <li><a href="#stack">Stack</a></li>
+    <li><a href="#connect">Connect</a></li>
+  </ul>
+  <a href="https://wa.me/919352490879?text=Hi%20Sachin!%20I%20want%20to%20discuss%20a%20project." class="nav-cta" target="_blank">Init Project →</a>
+  <button class="hamburger" id="hbtn" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<!-- MOBILE MENU -->
+<div class="mob-menu" id="mobmenu">
+  <a href="#solutions">Solutions</a>
+  <a href="#architecture">Architecture</a>
+  <a href="#pricing">Pricing</a>
+  <a href="#stack">Stack</a>
+  <a href="#connect">Connect</a>
+  <a href="https://wa.me/919352490879?text=Hi%20Sachin!%20I%20want%20to%20discuss%20a%20project." class="mob-cta-link" target="_blank">Init Project →</a>
+</div>
+
+<!-- ========================================
+     HERO
+======================================== -->
+<section class="hero">
+  <div class="hero-pill r">
+    <div class="pdot"></div>
+    <span id="livest">● Systems Online &nbsp;|&nbsp; Deploying Globally from India</span>
+  </div>
+  <p class="hero-label r d1">Performance-First Web Architecture</p>
+  <h1 class="hero-h1 r d2">
+    We Engineer<br>
+    <span class="ca">Digital</span>
+    <span class="cd"> Experiences.</span>
+  </h1>
+  <p class="hero-sub r d3">
+    SV Developers engineers <strong>high-speed, scalable digital solutions</strong> for global thinkers.
+    We bridge the gap between complex code and seamless user experiences.
+  </p>
+  <div class="hero-btns r d4">
+    <a href="https://wa.me/919352490879?text=Hi%20Sachin!%20I%20want%20to%20build%20something%20exceptional." class="btn-p" target="_blank">
+      Start a Project
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </a>
+    <a href="#architecture" class="btn-g">Explore Architecture</a>
+  </div>
+  <div class="scroll-cue">
+    <div class="scroll-line"></div>
+    Scroll
+  </div>
+</section>
+
+<!-- ========================================
+     TICKER
+======================================== -->
+<div class="ticker">
+  <div class="ticker-track">
+    <div class="ti"><span class="ts">◆</span>React / Next.js</div>
+    <div class="ti"><span class="ts">◆</span>Vercel Edge Network</div>
+    <div class="ti"><span class="ts">◆</span>Cloudflare CDN</div>
+    <div class="ti"><span class="ts">◆</span>Tailwind CSS</div>
+    <div class="ti"><span class="ts">◆</span>Node.js Backend</div>
+    <div class="ti"><span class="ts">◆</span>Supabase Database</div>
+    <div class="ti"><span class="ts">◆</span>Sub-1s Load Time</div>
+    <div class="ti"><span class="ts">◆</span>99.9% Uptime SLA</div>
+    <div class="ti"><span class="ts">◆</span>Mobile-First Design</div>
+    <div class="ti"><span class="ts">◆</span>Full SEO Architecture</div>
+    <div class="ti"><span class="ts">◆</span>React / Next.js</div>
+    <div class="ti"><span class="ts">◆</span>Vercel Edge Network</div>
+    <div class="ti"><span class="ts">◆</span>Cloudflare CDN</div>
+    <div class="ti"><span class="ts">◆</span>Tailwind CSS</div>
+    <div class="ti"><span class="ts">◆</span>Node.js Backend</div>
+    <div class="ti"><span class="ts">◆</span>Supabase Database</div>
+    <div class="ti"><span class="ts">◆</span>Sub-1s Load Time</div>
+    <div class="ti"><span class="ts">◆</span>99.9% Uptime SLA</div>
+    <div class="ti"><span class="ts">◆</span>Mobile-First Design</div>
+    <div class="ti"><span class="ts">◆</span>Full SEO Architecture</div>
+  </div>
+</div>
+
+<!-- ========================================
+     SOLUTIONS
+======================================== -->
+<section id="solutions">
+  <div class="sw">
+    <p class="eyebrow r">01 — Solutions</p>
+    <h2 class="stitle r d1">Built for Every Vertical.</h2>
+    <p class="ssub r d2">We don't host websites — we deploy global digital experiences. Our infrastructure ensures your brand is accessible from any corner of the globe in under 1 second.</p>
+
+    <div class="bento">
+      <div class="bc ba r">
+        <div class="bc-tag">Education</div>
+        <div class="bc-icon">🎓</div>
+        <h3>Coaching &amp; Institute Portals</h3>
+        <p>Admission-optimized portals for coaching centers, schools, and universities. Topper galleries, WhatsApp funnels, live exam alert sidebars — built for Alwar's education market and beyond.</p>
+        <div class="stat-row">
+          <div class="sbox"><div class="snum">+340%</div><div class="slbl">Enquiries</div></div>
+          <div class="sbox"><div class="snum">&lt;0.8s</div><div class="slbl">Load Time</div></div>
+          <div class="sbox"><div class="snum">99/100</div><div class="slbl">Mobile Score</div></div>
+        </div>
+      </div>
+      <div class="bc bb r d1">
+        <div class="bc-tag">Healthcare</div>
+        <div class="bc-icon">🏥</div>
+        <h3>Clinic &amp; Hospital Websites</h3>
+        <p>Doctor profiles, appointment forms, and department pages. Trust-first design that converts visitors into booked patients.</p>
+      </div>
+      <div class="bc bc2 r">
+        <div class="bc-tag">Corporate</div>
+        <div class="bc-icon">🏢</div>
+        <h3>B2B Corporate Platforms</h3>
+        <p>Precision-engineered corporate websites and landing pages that speak to decision-makers with credibility-first architecture.</p>
+      </div>
+      <div class="bc bd r d1">
+        <div class="bc-tag">Commerce</div>
+        <div class="bc-icon">🛒</div>
+        <h3>E-Commerce Storefronts</h3>
+        <p>High-converting product storefronts with blazing-fast catalogs and checkout flows optimized for Razorpay and UPI.</p>
+      </div>
+      <div class="bc be r d2">
+        <div class="bc-tag">Custom</div>
+        <div class="bc-icon">⚡</div>
+        <h3>Full-Stack Applications</h3>
+        <p>React/Next.js frontend, Node.js backend, Supabase database. From admin dashboards to booking engines — from first principles.</p>
+      </div>
+      <div class="bc bf r">
+        <div class="bc-tag">Infrastructure</div>
+        <div class="bc-icon">🌐</div>
+        <h3>Global Edge Deployment</h3>
+        <p>Deployed on Vercel's 100+ edge regions and Cloudflare's global CDN — your site loads in milliseconds whether your customer is in Alwar or Amsterdam.</p>
+        <div class="node-grid">
+          <div class="node"><div class="ncity">MUMBAI</div><div class="nping">12ms</div></div>
+          <div class="node"><div class="ncity">DELHI</div><div class="nping">15ms</div></div>
+          <div class="node"><div class="ncity">SINGAPORE</div><div class="nping">48ms</div></div>
+          <div class="node"><div class="ncity">FRANKFURT</div><div class="nping">82ms</div></div>
+          <div class="node"><div class="ncity">NEW YORK</div><div class="nping">110ms</div></div>
+        </div>
+      </div>
+      <div class="bc bg r d1">
+        <div class="bc-tag">Performance</div>
+        <div class="bc-icon">📊</div>
+        <h3>Lighthouse Scores</h3>
+        <p>Every site we ship passes Core Web Vitals with near-perfect scores. Speed is not optional — it is our baseline.</p>
+        <div class="speed-rows">
+          <div class="speed-row">
+            <div class="speed-meta"><span>Performance</span><span>100</span></div>
+            <div class="speed-track"><div class="speed-fill" style="width:100%"></div></div>
+          </div>
+          <div class="speed-row">
+            <div class="speed-meta"><span>SEO</span><span>98</span></div>
+            <div class="speed-track"><div class="speed-fill" style="width:98%"></div></div>
+          </div>
+          <div class="speed-row">
+            <div class="speed-meta"><span>Accessibility</span><span>96</span></div>
+            <div class="speed-track"><div class="speed-fill" style="width:96%"></div></div>
+          </div>
+          <div class="speed-row">
+            <div class="speed-meta"><span>Best Practices</span><span>100</span></div>
+            <div class="speed-track"><div class="speed-fill" style="width:100%"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     ARCHITECTURE
+======================================== -->
+<section id="architecture">
+  <div class="sw">
+    <p class="eyebrow r">02 — Architecture</p>
+    <h2 class="stitle r d1">What We Engineer.</h2>
+    <p class="ssub r d2">Each engagement follows a precision delivery process — from architecture design to production deployment on global infrastructure.</p>
+    <div class="arch-table r d3">
+      <div class="arch-row">
+        <div class="arch-num">01</div>
+        <div>
+          <h3>Static &amp; JAMstack Sites</h3>
+          <p>Ultra-fast marketing sites and landing pages built with Next.js, deployed on Vercel Edge for sub-second global delivery.</p>
+        </div>
+        <div class="arch-price">From ₹11,000</div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-num">02</div>
+        <div>
+          <h3>Dynamic Web Portals</h3>
+          <p>Feature-rich portals with forms, authentication, CMS, and admin panels — perfect for coaching centers, clinics, and corporates.</p>
+        </div>
+        <div class="arch-price">From ₹19,000</div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-num">03</div>
+        <div>
+          <h3>Full-Stack Applications</h3>
+          <p>End-to-end web apps with real-time databases, REST APIs, and custom business logic engineered for scale.</p>
+        </div>
+        <div class="arch-price">From ₹28,000</div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-num">04</div>
+        <div>
+          <h3>SEO &amp; Performance Engineering</h3>
+          <p>Technical SEO audits, Core Web Vitals optimization, schema markup, and Google Search Console setup.</p>
+        </div>
+        <div class="arch-price">₹3,000 / mo</div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-num">05</div>
+        <div>
+          <h3>Maintenance &amp; Growth Retainers</h3>
+          <p>Ongoing site updates, content changes, security patches, and monthly performance reports.</p>
+        </div>
+        <div class="arch-price">From ₹1,500 / mo</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     PRICING
+======================================== -->
+<section id="pricing">
+  <div class="sw">
+    <p class="eyebrow r">03 — Pricing</p>
+    <h2 class="stitle r d1">Transparent. No Surprises.</h2>
+    <p class="ssub r d2">Fixed-price packages designed for every stage of growth. What we quote is exactly what you pay — always.</p>
+    <div class="price-grid">
+      <div class="pcard r">
+        <div class="ptier">Tier 01</div>
+        <div class="pname">Basic</div>
+        <div class="pamount"><sup>₹</sup>11,000</div>
+        <div class="pnote">One-time project fee</div>
+        <div class="pdiv"></div>
+        <ul class="plist">
+          <li><span class="ck">✓</span>4–5 Pages</li>
+          <li><span class="ck">✓</span>Mobile Responsive Design</li>
+          <li><span class="ck">✓</span>Contact Form Integration</li>
+          <li><span class="ck">✓</span>Google Maps Embed</li>
+          <li><span class="ck">✓</span>WhatsApp Button</li>
+        </ul>
+        <a href="https://wa.me/919352490879?text=Hi%20Sachin!%20Interested%20in%20Basic%20Package%20Rs.11000." class="pcta" target="_blank">Get Started →</a>
+      </div>
+      <div class="pcard hot r d1">
+        <div class="hot-badge">Most Popular</div>
+        <div class="ptier">Tier 02</div>
+        <div class="pname">Standard</div>
+        <div class="pamount"><sup>₹</sup>19,000</div>
+        <div class="pnote">One-time project fee</div>
+        <div class="pdiv"></div>
+        <ul class="plist">
+          <li><span class="ck">✓</span>Everything in Basic</li>
+          <li><span class="ck">✓</span>Appointment / Enquiry Form</li>
+          <li><span class="ck">✓</span>Doctor / Staff Profile Section</li>
+          <li><span class="ck">✓</span>SEO Basics Setup</li>
+          <li><span class="ck">✓</span>Speed Optimization</li>
+        </ul>
+        <a href="https://wa.me/919352490879?text=Hi%20Sachin!%20Interested%20in%20Standard%20Package%20Rs.19000." class="pcta" target="_blank">Get Started →</a>
+      </div>
+      <div class="pcard r d2">
+        <div class="ptier">Tier 03</div>
+        <div class="pname">Premium</div>
+        <div class="pamount"><sup>₹</sup>28,000</div>
+        <div class="pnote">One-time project fee</div>
+        <div class="pdiv"></div>
+        <ul class="plist">
+          <li><span class="ck">✓</span>Everything in Standard</li>
+          <li><span class="ck">✓</span>Blog Section with CMS</li>
+          <li><span class="ck">✓</span>Google Analytics Setup</li>
+          <li><span class="ck">✓</span>Performance Optimization</li>
+          <li><span class="ck">✓</span>Full SEO Structure</li>
+        </ul>
+        <a href="https://wa.me/919352490879?text=Hi%20Sachin!%20Interested%20in%20Premium%20Package%20Rs.28000." class="pcta" target="_blank">Get Started →</a>
+      </div>
+    </div>
+    <div class="addon-title r">Monthly Recurring Services</div>
+    <div class="addon-grid r d1">
+      <div class="addon-card">
+        <div class="addon-em">🔧</div>
+        <div>
+          <div class="addon-name">Maintenance &amp; Updates</div>
+          <div class="addon-price">₹1,500 <span class="addon-cycle">/ month</span></div>
+        </div>
+      </div>
+      <div class="addon-card">
+        <div class="addon-em">🚀</div>
+        <div>
+          <div class="addon-name">SEO &amp; Google Optimization</div>
+          <div class="addon-price">₹3,000 <span class="addon-cycle">/ month</span></div>
+        </div>
+      </div>
+      <div class="addon-card">
+        <div class="addon-em">📣</div>
+        <div>
+          <div class="addon-name">Ad Management</div>
+          <div class="addon-price">₹5,000 <span class="addon-cycle">/ month</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     TECH STACK
+======================================== -->
+<section id="stack">
+  <div class="sw">
+    <p class="eyebrow r">04 — Stack</p>
+    <h2 class="stitle r d1">World-Class Infrastructure.</h2>
+    <p class="ssub r d2">The same technology stack as the world's fastest-growing startups. No page builders. No shortcuts. No compromise.</p>
+    <div class="stack-grid r d3">
+      <div class="scell">
+        <div class="slogo">⚛️</div>
+        <div><div class="sname">React</div><div class="scat">Frontend</div></div>
+      </div>
+      <div class="scell">
+        <div class="slogo" style="color:#fff;font-size:1.4rem;font-weight:900;">▲</div>
+        <div><div class="sname">Next.js</div><div class="scat">Framework</div></div>
+      </div>
+      <div class="scell">
+        <div class="slogo" style="color:#38bdf8;font-size:1rem;font-weight:900;">TW</div>
+        <div><div class="sname">Tailwind CSS</div><div class="scat">Styling</div></div>
+      </div>
+      <div class="scell">
+        <div class="slogo">🌐</div>
+        <div><div class="sname">Vercel</div><div class="scat">Performance</div></div>
+      </div>
+      <div class="scell">
+        <div class="slogo">🔶</div>
+        <div><div class="sname">Cloudflare</div><div class="scat">Performance</div></div>
+      </div>
+      <div class="scell">
+        <div class="slogo" style="color:#8bc34a;font-size:1rem;font-weight:900;">JS</div>
+        <div><div class="sname">Node.js</div><div class="scat">Backend / Tools</div></div>
+      </div>
+      <div class="scell">
+        <div class="slogo">🐙</div>
+        <div><div class="sname">GitHub</div><div class="scat">Backend / Tools</div></div>
+      </div>
+      <div class="scell">
+        <div class="slogo" style="color:#3ecf8e;font-size:1rem;font-weight:900;">SB</div>
+        <div><div class="sname">Supabase</div><div class="scat">Backend / Tools</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     CONNECT
+======================================== -->
+<section id="connect">
+  <div class="sw">
+    <div class="cbox r">
+      <p class="eyebrow" style="justify-content:center;margin-bottom:18px;">05 — Connect</p>
+      <h2>Ready to <span>Deploy</span><br>Something Great?</h2>
+      <p>Tell us what you're building. Sachin will personally review your requirements and deliver a free architecture proposal within 24 hours — no strings attached.</p>
+      <div class="cactions">
+        <a href="https://wa.me/919352490879?text=Hi%20Sachin!%20I%20want%20to%20build%20something%20great." class="btn-p" target="_blank">
+          WhatsApp Sachin
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+        <a href="mailto:svdevelopers.web@gmail.com" class="btn-g">svdevelopers.web@gmail.com</a>
+      </div>
+      <p class="cmeta">
+        +91 93524 90879
+        <span>·</span>
+        Alwar, Rajasthan
+        <span>·</span>
+        Serving Clients Globally
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     FOOTER
+======================================== -->
+<footer>
+  <div class="finner">
+    <div class="fbrand">SV<span>.</span>DEVELOPERS — Sachin</div>
+    <div class="fmid">
+      <div>© 2025 SV Developers. Engineered in Alwar, Rajasthan.</div>
+      <div><a href="mailto:svdevelopers.web@gmail.com">svdevelopers.web@gmail.com</a> · +91 93524 90879</div>
+    </div>
+    <div class="fbadge">
+      <div class="fbdot"></div>
+      Built with Next.js · Vercel Edge
+    </div>
+  </div>
+</footer>
+
+<!-- WHATSAPP FLOAT -->
+<a href="https://wa.me/919352490879?text=Hi%20Sachin!" class="waf" target="_blank" title="Chat on WhatsApp">
+  <svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+</a>
+
+<script>
+/* ── CURSOR (desktop) ── */
+const cdot = document.getElementById('cdot');
+const cring= document.getElementById('cring');
+let mx=0,my=0,rx=0,ry=0;
+document.addEventListener('mousemove', e => {
+  mx=e.clientX; my=e.clientY;
+  cdot.style.left=mx+'px'; cdot.style.top=my+'px';
+});
+(function loop(){
+  rx+=(mx-rx)*.13; ry+=(my-ry)*.13;
+  cring.style.left=rx+'px'; cring.style.top=ry+'px';
+  requestAnimationFrame(loop);
+})();
+
+/* ── HAMBURGER ── */
+const hbtn = document.getElementById('hbtn');
+const mmenu= document.getElementById('mobmenu');
+hbtn.addEventListener('click', () => {
+  const open = mmenu.classList.toggle('open');
+  hbtn.classList.toggle('open', open);
+  document.body.style.overflow = open ? 'hidden' : '';
+});
+mmenu.querySelectorAll('a').forEach(a => {
+  a.addEventListener('click', () => {
+    mmenu.classList.remove('open');
+    hbtn.classList.remove('open');
+    document.body.style.overflow = '';
+  });
+});
+
+/* ── NAV SCROLL ── */
+window.addEventListener('scroll', () => {
+  document.getElementById('mainnav').classList.toggle('solid', scrollY > 60);
+});
+
+/* ── PARTICLE CANVAS ── */
+(function(){
+  const cv=document.getElementById('bgc'), ctx=cv.getContext('2d');
+  let W,H;
+  const resize=()=>{ W=cv.width=innerWidth; H=cv.height=innerHeight; };
+  resize(); addEventListener('resize',resize);
+  const pts = Array.from({length:70},()=>({
+    x:Math.random()*3000, y:Math.random()*3000,
+    vx:(Math.random()-.5)*.28, vy:(Math.random()-.5)*.28,
+    r:Math.random()*1.3+.3
+  }));
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    for(const p of pts){
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.x<0)p.x=W; if(p.x>W)p.x=0;
+      if(p.y<0)p.y=H; if(p.y>H)p.y=0;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle='rgba(0,212,255,.45)'; ctx.fill();
+    }
+    for(let i=0;i<pts.length;i++){
+      for(let j=i+1;j<pts.length;j++){
+        const dx=pts[i].x-pts[j].x, dy=pts[i].y-pts[j].y;
+        const d=Math.sqrt(dx*dx+dy*dy);
+        if(d<120){
+          ctx.beginPath(); ctx.moveTo(pts[i].x,pts[i].y); ctx.lineTo(pts[j].x,pts[j].y);
+          ctx.strokeStyle=`rgba(0,212,255,${.055*(1-d/120)})`; ctx.lineWidth=.8; ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+/* ── SCROLL REVEAL ── */
+const ro = new IntersectionObserver(es=>{
+  es.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); ro.unobserve(e.target); } });
+},{threshold:.08});
+document.querySelectorAll('.r').forEach(el=>ro.observe(el));
+
+/* ── LIVE CLOCK ── */
+(function(){
+  const el=document.getElementById('livest');
+  function tick(){
+    const utc=Date.now()+new Date().getTimezoneOffset()*60000;
+    const ist=new Date(utc+19800000);
+    const pad=n=>String(n).padStart(2,'0');
+    el.textContent=`● Systems Online  |  Deploying Globally from India  |  IST ${pad(ist.getHours())}:${pad(ist.getMinutes())}:${pad(ist.getSeconds())}`;
+  }
+  tick(); setInterval(tick,1000);
+})();
+</script>
+</body>
+</html>
